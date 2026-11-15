@@ -19,6 +19,10 @@ Telegram Bot API لا يستطيع إنشاء بث حي داخل قناة من �
 
 قاعدة البيانات تستخدم SQLAlchemy. شغّل migration رقم `0001` على PostgreSQL قبل الإنتاج؛ لا ينشئ Vercel الجداول أثناء كل cold start. في تطوير محلي سريع فقط، عيّن `AUTO_CREATE_TABLES=true`. تقبل `DATABASE_URL` صيغة Vercel/Neon العادية (`postgresql://...`) أو صيغة `postgresql+asyncpg://...`.
 
+### Supabase + Vercel
+
+في Supabase اختر **Connect → Transaction pooler** وانسخ الرابط الذي يستخدم المنفذ `6543` واسم مستخدم `postgres.<PROJECT-REF>`؛ لا تستخدم رابط `db.<PROJECT-REF>.supabase.co:5432` المباشر في Vercel. استبدل كلمة مرور المثال بكلمة مرور قاعدة بياناتك بعد URL-encoding لأي رموز مثل `#` أو `@`. أضف الرابط كاملاً في Vercel باسم `DATABASE_URL` وأعد النشر. يضبط المشروع `NullPool` و`statement_cache_size=0` وSSL تلقائياً، وهي الإعدادات اللازمة لـ asyncpg مع Transaction Pooler.
+
 ## العامل
 
 ابنِ `worker/Dockerfile` وانشره في خدمة تدعم عملية طويلة. عرّف `CONTROL_API` و`PUBLIC_WORKER_URL` و`WORKER_CALLBACK_SECRET`. أرسل مهمة موثقة إلى `POST /jobs` تتضمن `session_id` و`source_url`. في الإنتاج استبدل مخزن الذاكرة في العامل بـ Redis، وضع URL/task queue موقّعاً بين API والعامل، ووسّع proxy لإعادة كتابة قوائم HLS ومقاطعها كي لا تظهر روابط المصدر في المتصفح.
