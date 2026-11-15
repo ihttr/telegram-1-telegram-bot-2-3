@@ -11,7 +11,10 @@ from app.services.extractor import extract
 app=FastAPI(title="Telegram Live Stream Bot")
 @app.on_event("startup")
 async def startup():
-    async with engine.begin() as conn: await conn.run_sync(Base.metadata.create_all)
+    # Schema changes are handled by Alembic in deployment.  Creating tables at
+    # every cold start makes the Vercel function fail when DB access is absent.
+    if settings().auto_create_tables:
+        async with engine.begin() as conn: await conn.run_sync(Base.metadata.create_all)
 @app.get("/health")
 async def health(): return {"ok":True,"service":"telegram-live-bot"}
 @app.get("/static/{asset}")
@@ -26,7 +29,8 @@ async def webhook(request: Request, x_telegram_bot_api_secret_token: str|None=He
     instance=bot()
     if not instance: raise HTTPException(503,"bot is not configured")
     from aiogram.types import Update
-    await dp.feed_update(instance,Update.model_validate(await request.json()),bot=instance); return {"ok":True}
+    await dp.feed_update(instance, Update.model_validate(await request.json()))
+    return {"ok":True}
 @app.get("/watch/{sid}")
 async def watch(sid: str, token: str):
     try: claims=jwt.decode(token,settings().jwt_secret,algorithms=["HS256"])

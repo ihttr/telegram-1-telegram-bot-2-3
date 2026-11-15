@@ -17,7 +17,7 @@ Telegram Bot API لا يستطيع إنشاء بث حي داخل قناة من �
 3. شغّل `uvicorn app.main:app --reload`.
 4. في الإنتاج اضبط webhook إلى `https://DOMAIN/api/telegram/webhook` مع `secret_token` مطابق.
 
-قاعدة البيانات تستخدم SQLAlchemy؛ للتشغيل الأولي ينشئ التطبيق الجداول. قبل الإنتاج أنشئ Alembic migrations من هذه النماذج وثبّتها في خط النشر.
+قاعدة البيانات تستخدم SQLAlchemy. شغّل migration رقم `0001` على PostgreSQL قبل الإنتاج؛ لا ينشئ Vercel الجداول أثناء كل cold start. في تطوير محلي سريع فقط، عيّن `AUTO_CREATE_TABLES=true`. تقبل `DATABASE_URL` صيغة Vercel/Neon العادية (`postgresql://...`) أو صيغة `postgresql+asyncpg://...`.
 
 ## العامل
 
