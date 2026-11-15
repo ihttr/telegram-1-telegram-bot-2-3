@@ -29,6 +29,8 @@ if _database_url.startswith("postgresql+asyncpg://"):
         "poolclass": NullPool,
         "connect_args": {"statement_cache_size": 0, "ssl": "require"},
     }
-engine=create_async_engine(_database_url, **_engine_options); SessionLocal=async_sessionmaker(engine, expire_on_commit=False)
+engine = create_async_engine(_database_url, **_engine_options) if settings().database_enabled else None
+SessionLocal = async_sessionmaker(engine, expire_on_commit=False) if engine else None
 async def get_db():
+    if SessionLocal is None: raise RuntimeError("قاعدة البيانات معطلة")
     async with SessionLocal() as db: yield db

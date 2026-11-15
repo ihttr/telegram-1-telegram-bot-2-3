@@ -7,13 +7,14 @@ from app.config import settings
 from app.database import engine, Base, SessionLocal, StreamSession, Stream
 from app.bot import dp, bot
 from app.services.extractor import extract
+from app.services.sessions import memory_session
 
 app=FastAPI(title="Telegram Live Stream Bot")
 @app.on_event("startup")
 async def startup():
     # Schema changes are handled by Alembic in deployment.  Creating tables at
     # every cold start makes the Vercel function fail when DB access is absent.
-    if settings().auto_create_tables:
+    if settings().database_enabled and settings().auto_create_tables:
         async with engine.begin() as conn: await conn.run_sync(Base.metadata.create_all)
 @app.get("/health")
 async def health(): return {"ok":True,"service":"telegram-live-bot"}
@@ -42,8 +43,10 @@ async def playback(sid: str, token: str, quality: str="Best Available"):
     try: claims=jwt.decode(token,settings().jwt_secret,algorithms=["HS256"])
     except jwt.PyJWTError: raise HTTPException(401,"expired")
     if claims.get("sid")!=sid: raise HTTPException(403,"invalid")
-    async with SessionLocal() as db:
-        session=(await db.execute(select(StreamSession).where(StreamSession.session_id==sid))).scalar_one_or_none()
+    if settings().database_enabled:
+        async with SessionLocal() as db:
+            session=(await db.execute(select(StreamSession).where(StreamSession.session_id==sid))).scalar_one_or_none()
+    else: session=memory_session(sid)
         if not session: raise HTTPException(404,"الجلسة غير موجودة")
         if session.status=="Processing": raise HTTPException(425,"جارٍ التحقق من بدء الفيديو")
         if session.status!="Live": raise HTTPException(404,"الجلسة متوقفة")
@@ -55,15 +58,24 @@ async def worker_ready(sid: str, request: Request, x_worker_secret: str|None=Hea
     if x_worker_secret != settings().worker_callback_secret: raise HTTPException(403,"forbidden")
     data=await request.json(); url=data.get("playback_url")
     if not isinstance(url,str) or not url.startswith(("https://","http://")): raise HTTPException(422,"invalid playback url")
-    async with SessionLocal() as db:
-        session=(await db.execute(select(StreamSession).where(StreamSession.session_id==sid))).scalar_one_or_none()
+    if settings().database_enabled:
+        async with SessionLocal() as db:
+            session=(await db.execute(select(StreamSession).where(StreamSession.session_id==sid))).scalar_one_or_none()
+            if not session: raise HTTPException(404)
+            session.playback_url=url; session.status="Live"; await db.commit()
+    else:
+        session=memory_session(sid)
         if not session: raise HTTPException(404)
-        session.playback_url=url; session.status="Live"; await db.commit()
+        session.playback_url=url; session.status="Live"
     return {"ok":True}
 @app.post("/api/worker/session/{sid}/failed")
 async def worker_failed(sid: str, x_worker_secret: str|None=Header(default=None)):
     if x_worker_secret != settings().worker_callback_secret: raise HTTPException(403)
-    async with SessionLocal() as db:
-        session=(await db.execute(select(StreamSession).where(StreamSession.session_id==sid))).scalar_one_or_none()
-        if session: session.status="Failed"; await db.commit()
+    if settings().database_enabled:
+        async with SessionLocal() as db:
+            session=(await db.execute(select(StreamSession).where(StreamSession.session_id==sid))).scalar_one_or_none()
+            if session: session.status="Failed"; await db.commit()
+    else:
+        session=memory_session(sid)
+        if session: session.status="Failed"
     return {"ok":True}

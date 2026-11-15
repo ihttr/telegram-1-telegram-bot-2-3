@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 12
     worker_callback_secret: str = "development-only-change-me"
     worker_url: str = ""
+    database_enabled: bool = False
     auto_create_tables: bool = False
     @field_validator("database_url", mode="before")
     @classmethod

@@ -1,4 +1,5 @@
 import secrets
+from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 import jwt
 import httpx
@@ -37,3 +38,21 @@ async def submit_worker(session_id: str, source_url: str):
     async with httpx.AsyncClient(timeout=10) as client:
         response=await client.post(cfg.worker_url.rstrip("/")+"/jobs",json={"session_id":session_id,"source_url":source_url},headers={"X-Worker-Secret":cfg.worker_callback_secret})
         response.raise_for_status()
+
+# Temporary diagnostic mode for deployments without a database. It intentionally
+# has no persistence; Vercel can discard it on a cold start.
+_memory_sessions: dict[str, SimpleNamespace] = {}
+_memory_users: set[int] = set()
+async def create_memory_session(telegram_id: int):
+    sid=secrets.token_urlsafe(24)
+    session=SimpleNamespace(session_id=sid, quality="Best Available", status="Processing", playback_url=None, telegram_id=telegram_id)
+    _memory_sessions[sid]=session; _memory_users.add(telegram_id)
+    return session
+async def memory_stop(sid: str, telegram_id: int):
+    session=_memory_sessions.get(sid)
+    if not session or session.telegram_id != telegram_id: return False
+    session.status="Stopped"; return True
+def memory_session(sid: str): return _memory_sessions.get(sid)
+async def memory_stats():
+    values=list(_memory_sessions.values())
+    return {"users":len(_memory_users),"streams":len(values),"active":sum(x.status=="Live" for x in values),"failed":sum(x.status=="Failed" for x in values)}
