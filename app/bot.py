@@ -1,10 +1,10 @@
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, WebAppInfo
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from app.config import settings
 from app.database import SessionLocal
 from app.services.extractor import extract
-from app.services.sessions import get_or_create_user, create_session, viewer_token, playback_path, stop_session, stats, submit_worker, create_memory_session, memory_stop, memory_stats
+from app.services.sessions import get_or_create_user, create_session, stop_session, stats, create_memory_session, memory_stop, memory_stats
 
 dp=Dispatcher()
 def permitted(uid): return not settings().allowed_ids or uid in settings().allowed_ids
@@ -16,10 +16,10 @@ async def start(m: Message):
     if await guard(m): await m.answer("مرحباً بك في Live Stream Bot 🎥\n\nأرسل رابط بث عام ومصرح به من Kick أو Twitch أو YouTube أو HLS/DASH للبدء.")
 @dp.message(Command("help"))
 async def help_(m):
-    if await guard(m): await m.answer("أرسل رابط بث مباشر. بعد التحقق من قابلية التشغيل ستصلك صفحة مشاهدة مؤقتة. لا يدعم البوت المحتوى الخاص أو المحمي بـ DRM.")
+    if await guard(m): await m.answer("أرسل رابط بث مباشر. سأحلله وأرسل زر فتح البث من منصته الأصلية داخل تيليجرام. لا يدعم البوت المحتوى الخاص أو المحمي بـ DRM.")
 @dp.message(Command("status"))
 async def status(m):
-    if await guard(m): await m.answer("الخدمة تعمل. معالجة الفيديو الطويلة تتم خارج Vercel.")
+    if await guard(m): await m.answer("الخدمة تعمل في وضع تيليجرام فقط.")
 @dp.message(Command("streams"))
 async def streams(m):
     if await guard(m): await m.answer("استخدم زر الإيقاف في رسالة كل جلسة، أو /stop <معرّف الجلسة>.")
@@ -42,18 +42,16 @@ async def admin(m):
 @dp.message(F.text.regexp(r"^https?://"))
 async def url(m):
     if not await guard(m): return
-    progress=await m.answer("⏳ جاري تحليل رابط البث والتحقق من بدء الفيديو فعلياً...")
+    progress=await m.answer("⏳ جاري تحليل رابط البث...")
     try:
         result=await extract(m.text.strip())
         if settings().database_enabled:
             async with SessionLocal() as db:
                 user=await get_or_create_user(db,m.from_user); session=await create_session(db,user,m.text.strip(),result)
         else: session=await create_memory_session(m.from_user.id)
-        token=viewer_token(session); watch=playback_path(session,token)
-        await submit_worker(session.session_id,m.text.strip())
-        keyboard=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="▶️ فتح صفحة المشاهدة",web_app=WebAppInfo(url=watch))],[InlineKeyboardButton(text="🌐 فتح في المتصفح الخارجي",url=watch)],[InlineKeyboardButton(text="⏹ إيقاف البث",callback_data=f"stop:{session.session_id}")]])
+        keyboard=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="▶️ فتح البث",url=m.text.strip())],[InlineKeyboardButton(text="⏹ إيقاف الجلسة",callback_data=f"stop:{session.session_id}")]])
         qualities="\n".join(f"- {q}" for q in result.qualities[:8])
-        await progress.edit_text(f"🎥 معلومات البث\n\n👤 صاحب البث: {result.channel or 'غير متاح'}\n📡 المنصة: {result.platform}\n🟡 الحالة: جارٍ تجهيز مشغل آمن والتحقق من بدء الفيديو\n📝 العنوان: {result.title}\n🎞 الجودات المتاحة:\n{qualities}\n\nلن يبدأ المشغل قبل تأكيد العامل نجاح التشغيل.",reply_markup=keyboard)
+        await progress.edit_text(f"🎥 معلومات البث\n\n👤 صاحب البث: {result.channel or 'غير متاح'}\n📡 المنصة: {result.platform}\n📝 العنوان: {result.title}\n🎞 الجودات التي أعلنتها المنصة:\n{qualities}\n\nاضغط الزر لفتح البث من المنصة الأصلية داخل تيليجرام.",reply_markup=keyboard)
     except Exception as e: await progress.edit_text(f"تعذر إنشاء جلسة مشاهدة: {str(e)[:350]}")
 @dp.callback_query(F.data.startswith("stop:"))
 async def stop_button(q: CallbackQuery):
